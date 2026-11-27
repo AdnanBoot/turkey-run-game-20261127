@@ -1,124 +1,163 @@
-// The game's rules and state, with no drawing and no browser in it: the player's turkey, the
-// pool of falling knives and corn cobs, spawning, collisions, score, lives and level. step() advances
-// one fixed step and returns what happened as bit flags, so the caller can react without the
-// world knowing about screens or sound. Nothing here allocates after createWorld returns.
-import { KNIFE, CORN, FIELD, LEVEL, LIVES, PLAYER, POOL_SIZE } from './config.js';
+import { CONFIG } from './config.js';
+import { createRunner } from './runner.js';
+import { createFarmer } from './farmer.js';
+import { createHazards } from './hazards.js';
 
-export const KIND_KNIFE = 0;
-export const KIND_CORN = 1;
+// Core Gobble Run world simulation: scrolling farmyard, difficulty ramp, scoring, and win/loss.
+export function createWorld(rng) {
+  const runner = createRunner();
+  const farmer = createFarmer();
+  const hazards = createHazards(rng);
 
-export const EVENT_HIT = 1;
-export const EVENT_CORN = 2;
-export const EVENT_OVER = 4;
-
-function overlaps(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-export function createWorld(random) {
-  const player = { x: 0, y: FIELD.groundY - PLAYER.height, width: PLAYER.width, height: PLAYER.height, invulnerable: 0 };
-  const items = [];
-  for (let index = 0; index < POOL_SIZE; index += 1) {
-    items.push({ active: false, kind: KIND_KNIFE, x: 0, y: 0, width: 0, height: 0, speed: 0 });
-  }
-  const state = { player, items, score: 0, lives: LIVES, level: 1, elapsed: 0, knifeTimer: 0, cornTimer: 0 };
+  const state = {
+    scrollX: 0,
+    distanceM: 0,
+    score: 0,
+    cornCount: 0,
+    nearMisses: 0,
+    speed: CONFIG.BASE_SCROLL_SPEED,
+    difficulty: 0,
+    shakeTimer: 0,
+    outcome: null, // null | 'caught' | 'escaped'
+    catchReason: '',
+    popups: [],
+    time: 0,
+  };
 
   function reset() {
-    player.x = (FIELD.width - player.width) / 2;
-    player.invulnerable = 0;
-    for (const item of items) item.active = false;
+    runner.reset();
+    farmer.reset();
+    hazards.reset();
+    state.scrollX = 0;
+    state.distanceM = 0;
     state.score = 0;
-    state.lives = LIVES;
-    state.level = 1;
-    state.elapsed = 0;
-    state.knifeTimer = KNIFE.interval;
-    state.cornTimer = CORN.interval;
+    state.cornCount = 0;
+    state.nearMisses = 0;
+    state.speed = CONFIG.BASE_SCROLL_SPEED;
+    state.difficulty = 0;
+    state.shakeTimer = 0;
+    state.outcome = null;
+    state.catchReason = '';
+    state.popups = [];
+    state.time = 0;
   }
 
-  function freeItem() {
-    for (let index = 0; index < items.length; index += 1) if (!items[index].active) return items[index];
-    return null;
+  function addPopup(text, x, y, color = '#ffe082') {
+    state.popups.push({ text, x, y, color, life: 0.95, maxLife: 0.95 });
   }
 
-  function spawnKnife() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_KNIFE;
-    item.width = KNIFE.minWidth + random() * (KNIFE.maxWidth - KNIFE.minWidth);
-    item.height = KNIFE.height;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = KNIFE.speed + KNIFE.speedPerLevel * (state.level - 1) + random() * KNIFE.speedJitter;
-  }
+  function update(dt, input) {
+    const events = [];
+    if (state.outcome) return events;
 
-  function spawnCorn() {
-    const item = freeItem();
-    if (item === null) return;
-    item.active = true;
-    item.kind = KIND_CORN;
-    item.width = CORN.size;
-    item.height = CORN.size;
-    item.x = random() * (FIELD.width - item.width);
-    item.y = -item.height;
-    item.speed = CORN.speed + CORN.speedPerLevel * (state.level - 1);
-  }
+    state.time += dt;
+    state.difficulty = Math.min(1, state.distanceM / CONFIG.GATE_DISTANCE_M);
 
-  function knifeInterval() {
-    return Math.max(KNIFE.minInterval, KNIFE.interval * KNIFE.intervalScale ** (state.level - 1));
-  }
+    const baseSpeed =
+      CONFIG.BASE_SCROLL_SPEED +
+      state.difficulty * (CONFIG.MAX_SCROLL_SPEED - CONFIG.BASE_SCROLL_SPEED);
+    const boost = runner.state.cornBoostTimer > 0 ? CONFIG.CORN_SPEED_BOOST * 3 : 0;
+    const stumbleSlow = runner.state.stumbleTimer > 0 ? 0.68 : 1;
+    state.speed = (baseSpeed + boost) * stumbleSlow;
 
-  /**
-   * One fixed step. `direction` is -1, 0 or 1 (left, still, right). With `harmless` set (the title
-   * screen's backdrop) things fall but nothing touches the player and nothing scores.
-   */
-  function step(dt, direction, harmless) {
-    let events = 0;
-    state.elapsed += dt;
-    state.level = Math.min(LEVEL.max, 1 + Math.floor(state.elapsed / LEVEL.seconds));
+    const dx = state.speed * dt;
+    state.scrollX += dx;
+    state.distanceM = Math.min(
+      CONFIG.GATE_DISTANCE_M,
+      state.scrollX / CONFIG.PIXELS_PER_METER,
+    );
 
-    player.x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * dt));
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
+    const speedRatio =
+      (state.speed - CONFIG.BASE_SCROLL_SPEED) /
+      (CONFIG.MAX_SCROLL_SPEED - CONFIG.BASE_SCROLL_SPEED);
 
-    state.knifeTimer -= dt;
-    if (state.knifeTimer <= 0) {
-      spawnKnife();
-      state.knifeTimer += knifeInterval();
-    }
-    state.cornTimer -= dt;
-    if (state.cornTimer <= 0) {
-      spawnCorn();
-      state.cornTimer += CORN.interval + random() * CORN.intervalJitter;
-    }
+    runner.update(dt, input, Math.max(0, speedRatio));
+    if (runner.state.justJumped) events.push({ type: 'jump', x: runner.state.x, y: runner.state.y });
+    if (runner.state.justLanded) events.push({ type: 'land', x: runner.state.x, y: runner.state.y });
 
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      item.y += item.speed * dt;
-      if (item.y > FIELD.groundY) {
-        item.active = false;
-        if (item.kind === KIND_KNIFE && !harmless) state.score += KNIFE.dodgePoints;
-        continue;
-      }
-      if (harmless || !overlaps(item, player)) continue;
-      if (item.kind === KIND_CORN) {
-        item.active = false;
-        state.score += CORN.points;
-        events |= EVENT_CORN;
-      } else if (player.invulnerable === 0) {
-        item.active = false;
-        state.lives -= 1;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        if (state.lives === 0) {
-          events |= EVENT_OVER;
-          break;
+    farmer.update(dt, runner.state.stumbleTimer > 0, Math.max(0, speedRatio));
+
+    const allowSpawn = state.distanceM < CONFIG.GATE_DISTANCE_M - 60;
+    const hazardEvents = hazards.update(dt, state.speed, state.difficulty, allowSpawn);
+    for (const ev of hazardEvents) events.push(ev);
+
+    const collisions = hazards.checkCollisions(runner.getHitbox(), runner.state.x);
+    for (const col of collisions) {
+      if (col.type === 'corn') {
+        state.cornCount += 1;
+        state.score += CONFIG.CORN_SCORE;
+        runner.state.cornBoostTimer = CONFIG.CORN_BOOST_DURATION;
+        addPopup(`+${CONFIG.CORN_SCORE}`, col.item.x, col.item.y - 14, '#ffd54f');
+        events.push({ type: 'corn', x: col.item.x, y: col.item.y });
+      } else if (col.type === 'near_miss') {
+        state.nearMisses += 1;
+        state.score += CONFIG.NEAR_MISS_SCORE;
+        addPopup(`+${CONFIG.NEAR_MISS_SCORE} CLOSE!`, runner.state.x + 18, runner.state.y - 82, '#80e5ff');
+        events.push({ type: 'near_miss' });
+      } else if (col.type === 'hit') {
+        const damaged = runner.takeDamage(1);
+        if (damaged) {
+          state.shakeTimer = CONFIG.SHAKE_DURATION;
+          farmer.onStumble(CONFIG.FARMER_STUMBLE_LOSS);
+          const label =
+            col.item.kind === 'oven'
+              ? 'ROASTED!'
+              : col.item.kind === 'knife'
+                ? 'CARVED!'
+                : 'STUMBLED!';
+          addPopup(label, runner.state.x, runner.state.y - 88, '#ff7043');
+          events.push({ type: 'hit', kind: col.item.kind, x: runner.state.x, y: runner.state.y - 30 });
+
+          if (runner.state.lives <= 0) {
+            state.outcome = 'caught';
+            state.catchReason =
+              col.item.kind === 'oven'
+                ? 'Scorched by the Thanksgiving oven!'
+                : col.item.kind === 'knife'
+                  ? 'Clipped by a flying carving knife!'
+                  : 'Out of lives — the farmer caught you!';
+            events.push({ type: 'caught' });
+          } else if (farmer.isCaught()) {
+            state.outcome = 'caught';
+            state.catchReason = 'The farmer closed the gap and caught you!';
+            events.push({ type: 'caught' });
+          }
         }
       }
     }
+
+    if (state.shakeTimer > 0) {
+      state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+    }
+
+    for (let i = state.popups.length - 1; i >= 0; i--) {
+      const p = state.popups[i];
+      p.y -= 42 * dt;
+      p.life -= dt;
+      if (p.life <= 0) state.popups.splice(i, 1);
+    }
+
+    // Score = distance + corn + near-misses
+    const distanceScore = Math.floor(state.distanceM * CONFIG.SCORE_PER_METER);
+    state.score =
+      distanceScore +
+      state.cornCount * CONFIG.CORN_SCORE +
+      state.nearMisses * CONFIG.NEAR_MISS_SCORE;
+
+    if (!state.outcome && state.distanceM >= CONFIG.GATE_DISTANCE_M) {
+      state.outcome = 'escaped';
+      events.push({ type: 'escaped' });
+    }
+
     return events;
   }
 
-  reset();
-  return { state, reset, step };
+  return {
+    state,
+    runner,
+    farmer,
+    hazards,
+    reset,
+    update,
+  };
 }
