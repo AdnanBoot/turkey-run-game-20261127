@@ -1,42 +1,86 @@
-// A working turkey-run-game-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. A starting point, not a winner: Turkey Dodge, a
-// plain 2D canvas game where a turkey dodges the carving knives falling at it and catches corn, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build your
-// own turkey escape game (any genre: a runner, stealth, an arcade game; any library you vendor under
-// game/, or none), put your 3 or 4 PNG or JPEG screenshots
-// in screenshots/ (the first by name is the cover) and run it.
-//
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Gobble Run — build & handover entrypoint (Node 22+, stdlib only).
+// Validates gate caps on game/ and screenshots/, copies them to MAKEFUN_OUTPUT_DIR (or /output),
+// generates dossier.json via vendor/makefun-game.ts, and prints a concise build summary.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
+const CAPS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
+
+function walkFiles(dir) {
+  const results = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkFiles(full));
+    } else if (entry.isFile()) {
+      results.push({ path: full, size: statSync(full).size });
+    }
+  }
+  return results;
+}
+
+function validateTree(gameDir, shotsDir) {
+  if (!existsSync(join(gameDir, 'index.html'))) {
+    throw new Error(`Missing ${join(gameDir, 'index.html')}`);
+  }
+  const gameFiles = walkFiles(gameDir);
+  const gameBytes = gameFiles.reduce((sum, f) => sum + f.size, 0);
+
+  if (gameFiles.length > CAPS.game_max_files) {
+    throw new Error(`game/ file count ${gameFiles.length} exceeds cap ${CAPS.game_max_files}`);
+  }
+  if (gameBytes > CAPS.game_max_bytes) {
+    throw new Error(`game/ byte size ${gameBytes} exceeds cap ${CAPS.game_max_bytes}`);
+  }
+  for (const f of gameFiles) {
+    const relLen = Buffer.byteLength(relative(gameDir, f.path), 'utf8');
+    if (relLen > CAPS.game_path_max_bytes) {
+      throw new Error(`Path too long (${relLen} bytes): ${f.path}`);
+    }
+  }
+
+  const shotFiles = existsSync(shotsDir) ? walkFiles(shotsDir) : [];
+  if (shotFiles.length > CAPS.screenshots.max) {
+    throw new Error(`Screenshot count ${shotFiles.length} exceeds max ${CAPS.screenshots.max}`);
+  }
+  for (const s of shotFiles) {
+    if (s.size > CAPS.screenshots.max_bytes) {
+      throw new Error(`Screenshot ${s.path} (${s.size} bytes) exceeds ${CAPS.screenshots.max_bytes}`);
+    }
+  }
+
+  return { gameFiles: gameFiles.length, gameBytes, shotFiles: shotFiles.length };
+}
+
 const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const gameSrc = join(here, 'game');
+const shotsSrc = join(here, 'screenshots');
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+const stats = validateTree(gameSrc, shotsSrc);
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
+rmSync(join(outDir, 'game'), { recursive: true, force: true });
+rmSync(join(outDir, 'screenshots'), { recursive: true, force: true });
+mkdirSync(outDir, { recursive: true });
+cpSync(gameSrc, join(outDir, 'game'), { recursive: true });
+mkdirSync(join(outDir, 'screenshots'), { recursive: true });
+if (existsSync(shotsSrc)) {
+  cpSync(shotsSrc, join(outDir, 'screenshots'), { recursive: true });
+}
+
+const dossierJson = buildDossier(outDir, CAPS);
+writeFileSync(join(outDir, 'dossier.json'), dossierJson);
+
+const dossierBytes = Buffer.byteLength(dossierJson, 'utf8');
+console.log(
+  `[gobble-run] handover ready at ${outDir}: ${stats.gameFiles} game files (${stats.gameBytes} B), ${stats.shotFiles} screenshots, dossier.json (${dossierBytes} / ${CAPS.text_max_bytes} B)`,
 );
