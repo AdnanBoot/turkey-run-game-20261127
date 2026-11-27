@@ -330,11 +330,14 @@ function drawOven(ctx, item, time) {
     ctx.stroke();
 
     ctx.fillStyle = '#fef08a';
+    ctx.strokeStyle = '#991b1b';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(x + w * 0.5, y - 74, 15, 0, Math.PI * 2);
+    ctx.arc(x + w * 0.5, y - 74, 16, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#b91c1c';
-    ctx.font = '900 20px system-ui, sans-serif';
+    ctx.stroke();
+    ctx.fillStyle = '#991b1b';
+    ctx.font = '900 21px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('!', x + w * 0.5, y - 73);

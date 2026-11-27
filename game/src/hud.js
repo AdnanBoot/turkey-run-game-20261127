@@ -243,15 +243,15 @@ function drawEndOverlay(ctx, world, escaped) {
   ctx.fillRect(0, 0, W, H);
 
   const cardW = 580;
-  const cardH = 340;
+  const cardH = 326;
   const cardX = (W - cardW) * 0.5;
-  const cardY = 165;
+  const cardY = 128;
   drawPanel(ctx, cardX, cardY, cardW, cardH);
 
   ctx.textAlign = 'center';
   ctx.fillStyle = escaped ? '#4ade80' : '#f87171';
-  ctx.font = '900 46px system-ui, sans-serif';
-  ctx.fillText(escaped ? 'ESCAPED!' : 'CAUGHT!', W * 0.5, cardY + 68);
+  ctx.font = '900 44px system-ui, sans-serif';
+  ctx.fillText(escaped ? 'ESCAPED!' : 'CAUGHT!', W * 0.5, cardY + 62);
 
   ctx.fillStyle = '#fef3c7';
   ctx.font = '600 18px system-ui, sans-serif';
@@ -260,19 +260,19 @@ function drawEndOverlay(ctx, world, escaped) {
       ? 'You made it past the Forest Gate — no Thanksgiving dinner today!'
       : state.catchReason || 'The farmer caught you before the Forest Gate!',
     W * 0.5,
-    cardY + 106,
+    cardY + 100,
   );
 
   // Stats row
-  const statsY = cardY + 164;
+  const statsY = cardY + 156;
   drawStatBox(ctx, cardX + 46, statsY, 148, 'SCORE', String(state.score));
   drawStatBox(ctx, cardX + 216, statsY, 148, 'DISTANCE', `${Math.floor(state.distanceM)}m`);
   drawStatBox(ctx, cardX + 386, statsY, 148, 'CORN', String(state.cornCount));
 
   const btnW = 240;
-  const btnH = 56;
+  const btnH = 54;
   const btnX = (W - btnW) * 0.5;
-  const btnY = cardY + 256;
+  const btnY = cardY + 244;
 
   ctx.fillStyle = escaped ? '#16a34a' : '#ea580c';
   ctx.strokeStyle = '#fde68a';
