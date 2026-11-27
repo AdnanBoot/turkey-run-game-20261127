@@ -1,65 +1,69 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
+// Centralized tuning constants for Gobble Run.
+export const CONFIG = {
+  // Logical canvas resolution (16:9)
+  WIDTH: 1280,
+  HEIGHT: 720,
+  GROUND_Y: 580,
 
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
+  // Fixed-step simulation
+  STEP: 1 / 60,
+  MAX_FRAME_DT: 0.05,
 
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
-export const STEP = 1 / 60;
+  // Goal and world progression
+  GATE_DISTANCE_M: 1200,
+  PIXELS_PER_METER: 28,
+  BASE_SCROLL_SPEED: 380,
+  MAX_SCROLL_SPEED: 670,
+  CORN_SPEED_BOOST: 14,
+  CORN_BOOST_DURATION: 2.2,
 
-export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+  // Turkey runner physics
+  TURKEY_X: 330,
+  TURKEY_STAND_W: 64,
+  TURKEY_STAND_H: 68,
+  TURKEY_DUCK_W: 72,
+  TURKEY_DUCK_H: 38,
+  JUMP_VELOCITY: -790,
+  GRAVITY: 2150,
+  FAST_FALL_GRAVITY: 3600,
+  MAX_LIVES: 3,
+  INVULN_DURATION: 1.35,
+  STUMBLE_DURATION: 0.45,
+  SHAKE_DURATION: 0.32,
+  SHAKE_INTENSITY: 11,
+
+  // Farmer chase
+  FARMER_START_GAP: 100, // 0 = caught, 100 = safe lead
+  FARMER_MIN_GAP: 0,
+  FARMER_MAX_GAP: 100,
+  FARMER_STUMBLE_LOSS: 34,
+  FARMER_RECOVERY_PER_SEC: 2.4,
+  FARMER_SHOUT_DURATION: 2.4,
+
+  // Scoring
+  SCORE_PER_METER: 2,
+  CORN_SCORE: 50,
+  NEAR_MISS_SCORE: 35,
+  NEAR_MISS_MARGIN: 34,
+
+  // Hazards
+  OVEN_W: 96,
+  OVEN_H: 108,
+  OVEN_FLAME_H: 155,
+  OVEN_TELEGRAPH_MIN: 0.72,
+  OVEN_TELEGRAPH_MAX: 1.25,
+  OVEN_ACTIVE_TIME: 0.85,
+  OVEN_COOLDOWN_TIME: 1.2,
+
+  KNIFE_W: 66,
+  KNIFE_H: 22,
+  KNIFE_HIGH_Y: 492, // duckable!
+  KNIFE_LOW_Y: 540,  // jumpable!
+  KNIFE_SPEED_BONUS: 210,
+
+  FENCE_W: 48,
+  FENCE_H: 64,
+  HAY_W: 76,
+  HAY_H: 52,
+  CORN_R: 18,
 };
-
-export const LIVES = 3;
-
-export const KNIFE = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
-};
-
-export const CORN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
-};
-
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
-
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
-export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#8a5230',
-  tail: ['#a0522d', '#d2691e', '#e8a33c'],
-  head: '#c9d2e3',
-  wattle: '#e5534b',
-  knife: '#c9ced6',
-  handle: '#7a4a26',
-  corn: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
-};
-
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'turkey-dodge.best';
